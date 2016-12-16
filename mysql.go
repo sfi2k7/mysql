@@ -112,7 +112,7 @@ func (m *MySQL) One(target interface{}, args ...interface{}) error {
 	}
 
 	if row.Err() != nil {
-		fmt.Println("Row Erro")
+		fmt.Println("Row Erro", row.Err())
 		return row.Err()
 	}
 
