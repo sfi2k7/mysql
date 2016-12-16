@@ -108,6 +108,7 @@ func (m *MySQL) One(target interface{}, args ...interface{}) error {
 	if len(args) == 0 {
 		row = m.connection.QueryRowx(s)
 	} else {
+		fmt.Println("Calling with arguments", args)
 		row = m.connection.QueryRowx(s, args...)
 	}
 
@@ -158,7 +159,7 @@ func (m *MySQL) prepare() string {
 	if len(m.sel) > 0 {
 		var str = "SELECT " + m.sel + " FROM " + m.table
 		if len(m.where) > 0 {
-			str += "WHERE " + m.where
+			str += " WHERE " + m.where
 		}
 
 		if m.limit > 0 {
