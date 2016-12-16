@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"fmt"
+	"reflect"
 
 	"strconv"
 
@@ -37,11 +38,6 @@ type MySQL struct {
 	LastAffected int64
 	SafetyCheck  bool
 }
-
-// func (m *MySQL) DB(db string) *MySQL {
-// 	m.db = db
-// 	return m
-// }
 
 func (m *MySQL) T(tableName string) *MySQL {
 	m.table = tableName
@@ -79,13 +75,18 @@ func (m *MySQL) Update(updates M) error {
 	return nil
 }
 
-func (m *MySQL) Insert(inserts M) error {
-	m.inserts = inserts
+func (m *MySQL) Insert(inserts interface{}) error {
+	if reflect.ValueOf(inserts).Kind() == reflect.Struct {
+		m.inserts = ToM(inserts, "db")
+	} else {
+		m.inserts = inserts.(M)
+	}
+
 	s := m.prepare()
 	m.open()
 	defer m.reset()
 	//var mm = make(map[string]interface{})
-	r, err := m.connection.NamedExec(s, inserts.ToMap())
+	r, err := m.connection.NamedExec(s, m.inserts)
 	if err != nil {
 		return err
 	}
@@ -120,6 +121,17 @@ func (m *MySQL) One(target interface{}, args ...interface{}) error {
 	err := row.StructScan(target)
 
 	return err
+}
+
+func (m *MySQL) AllRows(args ...interface{}) (*sqlx.Rows, error) {
+	m.open()
+	defer m.reset()
+	if len(m.inserts) == 0 && len(m.updates) == 0 && len(m.sel) == 0 {
+		m.sel = "*"
+	}
+
+	s := m.prepare()
+	return m.connection.Queryx(s, args...)
 }
 
 func (m *MySQL) Where(where string) *MySQL {
@@ -171,7 +183,7 @@ func (m *MySQL) prepare() string {
 
 	if len(m.inserts) > 0 {
 		var cols []string
-		for c, _ := range m.inserts {
+		for c := range m.inserts {
 			cols = append(cols, c)
 		}
 		var str = "INSERT INTO " + m.table + " ("
@@ -191,12 +203,14 @@ func (m *MySQL) prepare() string {
 	if len(m.updates) > 0 {
 		var str = "UPDATE " + m.table + " "
 		var cols []string
-		for c, _ := range m.updates {
+		for c := range m.updates {
 			cols = append(cols, c)
 		}
+
 		for _, c := range cols {
 			str += "SET " + c + "=:" + c + ","
 		}
+
 		str = str[0 : len(str)-1]
 		if len(m.where) > 0 {
 			str += " WHERE " + m.where
@@ -222,4 +236,31 @@ func New(cs string) *MySQL {
 		cs:          cs,
 		SafetyCheck: true,
 	}
+}
+
+func ToM(s interface{}, tagName string) M {
+	m := make(M, 0)
+	v := reflect.ValueOf(s)
+
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+
+	if v.Kind() != reflect.Struct {
+		return nil // , errors.New("Input must be of type struct")
+	}
+
+	t := v.Type()
+	for x := 0; x < v.NumField(); x++ {
+		f := t.Field(x)
+		if len(tagName) > 0 {
+			tag := f.Tag.Get(tagName)
+			if len(tag) > 0 {
+				m[tag] = v.Field(x).Interface()
+			}
+			continue
+		}
+		m[f.Name] = v.Field(x).Interface()
+	}
+	return m //, nil
 }
