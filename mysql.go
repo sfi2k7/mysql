@@ -12,6 +12,10 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+const (
+	tagName string = "db"
+)
+
 type M map[string]interface{}
 
 func (m M) ToMap() map[string]interface{} {
@@ -77,7 +81,7 @@ func (m *MySQL) Update(updates M) error {
 
 func (m *MySQL) Insert(inserts interface{}) error {
 	if reflect.ValueOf(inserts).Kind() == reflect.Struct {
-		m.inserts = ToM(inserts, "db")
+		m.inserts = ToM(inserts, tagName)
 	} else {
 		m.inserts = inserts.(M)
 	}
@@ -85,7 +89,6 @@ func (m *MySQL) Insert(inserts interface{}) error {
 	s := m.prepare()
 	m.open()
 	defer m.reset()
-	//var mm = make(map[string]interface{})
 	r, err := m.connection.NamedExec(s, m.inserts.ToMap())
 	if err != nil {
 		return err
