@@ -100,20 +100,20 @@ func (m *MySQL) Insert(inserts M) error {
 func (m *MySQL) One(target interface{}, args ...interface{}) error {
 	m.open()
 	defer m.reset()
+	if len(m.inserts) == 0 && len(m.updates) == 0 && len(m.sel) == 0 {
+		m.sel = "*"
+	}
 
 	s := m.prepare()
-	fmt.Println(s)
 	var row *sqlx.Row
-	fmt.Println(args)
 	if len(args) == 0 {
 		row = m.connection.QueryRowx(s)
 	} else {
-		fmt.Println("Calling with arguments", args)
 		row = m.connection.QueryRowx(s, args...)
 	}
 
 	if row.Err() != nil {
-		fmt.Println("Row Erro", row.Err())
+		fmt.Println("Row Error", row.Err())
 		return row.Err()
 	}
 
