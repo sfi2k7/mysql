@@ -86,7 +86,7 @@ func (m *MySQL) Insert(inserts interface{}) error {
 	m.open()
 	defer m.reset()
 	//var mm = make(map[string]interface{})
-	r, err := m.connection.NamedExec(s, m.inserts)
+	r, err := m.connection.NamedExec(s, m.inserts.ToMap())
 	if err != nil {
 		return err
 	}
