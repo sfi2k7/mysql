@@ -41,10 +41,26 @@ type MySQL struct {
 	LastInsertId int64
 	LastAffected int64
 	SafetyCheck  bool
+	sort         []string
+}
+
+func (m *MySQL) Conn() *sqlx.DB {
+	m.open()
+	return m.connection
 }
 
 func (m *MySQL) T(tableName string) *MySQL {
 	m.table = tableName
+	return m
+}
+
+func (m *MySQL) Sort(sorts ...string) *MySQL {
+	m.sort = sorts
+	return m
+}
+
+func (m *MySQL) Limit(n int) *MySQL {
+	m.limit = n
 	return m
 }
 
@@ -109,6 +125,7 @@ func (m *MySQL) One(target interface{}, args ...interface{}) error {
 	}
 
 	s := m.prepare()
+	//fmt.Println(s)
 	var row *sqlx.Row
 	if len(args) == 0 {
 		row = m.connection.QueryRowx(s)
@@ -176,6 +193,13 @@ func (m *MySQL) prepare() string {
 		if len(m.where) > 0 {
 			str += " WHERE " + m.where
 		}
+		if len(m.sort) > 0 {
+			str += " ORDER BY "
+			for _, s := range m.sort {
+				str += s + ","
+			}
+			str = str[0 : len(str)-1]
+		}
 
 		if m.limit > 0 {
 			str += " LIMIT " + strconv.Itoa(m.limit)
@@ -232,6 +256,7 @@ func (m *MySQL) reset() {
 	m.where = ""
 	m.inserts = nil
 	m.updates = nil
+	m.sort = []string{}
 }
 
 func New(cs string) *MySQL {
