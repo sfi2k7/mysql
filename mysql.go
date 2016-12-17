@@ -103,6 +103,7 @@ func (m *MySQL) Insert(inserts interface{}) error {
 	}
 
 	s := m.prepare()
+	fmt.Println(s)
 	m.open()
 	defer m.reset()
 	r, err := m.connection.NamedExec(s, m.inserts.ToMap())
@@ -153,6 +154,39 @@ func (m *MySQL) AllRows(args ...interface{}) (*sqlx.Rows, error) {
 	s := m.prepare()
 	return m.connection.Queryx(s, args...)
 }
+
+// func (m *MySQL) All(out interface{}, args ...interface{}) error {
+// 	m.open()
+// 	defer m.reset()
+// 	if len(m.inserts) == 0 && len(m.updates) == 0 && len(m.sel) == 0 {
+// 		m.sel = "*"
+// 	}
+
+// 	s := m.prepare()
+// 	res, err := m.connection.Queryx(s, args...)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	defer res.Close()
+// 	for res.Next() {
+// 		v := reflect.ValueOf(out)
+// 		if v.Kind() == reflect.Ptr {
+// 			v = v.Elem()
+// 		}
+// 		T := v.Type().Elem()
+// 		//newi := reflect.New(T.Elem())
+// 		newi := reflect.Zero(T)
+// 		// if newi.Kind() == reflect.Ptr {
+// 		// 	newi = newi.Elem()
+// 		// }
+// 		i := newi.Interface()
+// 		err := res.StructScan(&i)
+// 		fmt.Println(err)
+// 		fmt.Println(newi)
+// 	}
+// 	return nil
+
+// }
 
 func (m *MySQL) Where(where string) *MySQL {
 	m.where = where
@@ -283,6 +317,9 @@ func ToM(s interface{}, tagName string) M {
 		f := t.Field(x)
 		if len(tagName) > 0 {
 			tag := f.Tag.Get(tagName)
+			if tag == "id" {
+				continue
+			}
 			if len(tag) > 0 {
 				m[tag] = v.Field(x).Interface()
 			}
