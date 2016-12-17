@@ -108,7 +108,7 @@ func (m *MySQL) Insert(inserts interface{}) error {
 	// }
 
 	s := m.prepare()
-	fmt.Println(s)
+
 	m.open()
 	defer m.reset()
 	r, err := m.connection.NamedExec(s, m.inserts.ToMap())
