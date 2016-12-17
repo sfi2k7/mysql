@@ -96,11 +96,16 @@ func (m *MySQL) Update(updates M) error {
 }
 
 func (m *MySQL) Insert(inserts interface{}) error {
-	if reflect.ValueOf(inserts).Kind() == reflect.Struct {
-		m.inserts = ToM(inserts, tagName)
-	} else {
-		m.inserts = inserts.(M)
+	i, ok := inserts.(M)
+	if !ok {
+		i = ToM(inserts, tagName)
 	}
+	m.inserts = i
+	// if reflect.ValueOf(inserts).Kind() == reflect.Struct {
+	// 	m.inserts = ToM(inserts, tagName)
+	// } else {
+	// 	m.inserts = inserts.(M)
+	// }
 
 	s := m.prepare()
 	fmt.Println(s)
