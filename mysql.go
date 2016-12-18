@@ -31,6 +31,7 @@ type MySQL struct {
 	table        string
 	sel          string
 	where        string
+	whereParams  M
 	limit        int
 	skip         int
 	isOpen       bool
@@ -82,7 +83,11 @@ func (m *MySQL) Update(updates M) error {
 	s := m.prepare()
 	m.open()
 	defer m.reset()
-
+	if len(m.whereParams) > 0 {
+		for k, v := range m.whereParams {
+			updates[k] = v
+		}
+	}
 	r, err := m.connection.NamedExec(s, updates.ToMap())
 	if err != nil {
 		return err
@@ -193,8 +198,9 @@ func (m *MySQL) AllRows(args ...interface{}) (*sqlx.Rows, error) {
 
 // }
 
-func (m *MySQL) Where(where string) *MySQL {
+func (m *MySQL) Where(where string, args M) *MySQL {
 	m.where = where
+	m.whereParams = args
 	return m
 }
 
@@ -232,6 +238,7 @@ func (m *MySQL) prepare() string {
 		if len(m.where) > 0 {
 			str += " WHERE " + m.where
 		}
+
 		if len(m.sort) > 0 {
 			str += " ORDER BY "
 			for _, s := range m.sort {
@@ -296,6 +303,7 @@ func (m *MySQL) reset() {
 	m.inserts = nil
 	m.updates = nil
 	m.sort = []string{}
+	m.whereParams = M{}
 }
 
 func New(cs string) *MySQL {
