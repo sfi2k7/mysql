@@ -89,7 +89,7 @@ func (m *MySQL) Update(updates M) error {
 		}
 	}
 
-	fmt.Println("Updating with ", s, updates.ToMap())
+	//fmt.Println("Updating with ", s, updates.ToMap())
 	r, err := m.connection.NamedExec(s, updates.ToMap())
 	if err != nil {
 		return err
