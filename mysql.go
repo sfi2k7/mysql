@@ -281,9 +281,9 @@ func (m *MySQL) prepare() string {
 		for c := range m.updates {
 			cols = append(cols, c)
 		}
-
+		str += " SET "
 		for _, c := range cols {
-			str += "SET " + c + "=:" + c + ","
+			str += " " + c + "=:" + c + ","
 		}
 
 		str = str[0 : len(str)-1]
