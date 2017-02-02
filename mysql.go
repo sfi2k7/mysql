@@ -1,4 +1,4 @@
-package mysql
+getpackage mysql
 
 import (
 	"fmt"
@@ -8,12 +8,18 @@ import (
 
 	"errors"
 
+	"strings"
+
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 )
 
 const (
 	tagName string = "db"
+)
+
+var (
+	NotFoundError = errors.New("Not Found")
 )
 
 type M map[string]interface{}
@@ -295,6 +301,256 @@ func (m *MySQL) prepare() string {
 	return ""
 }
 
+func (m *MySQL) simpleQuery(query string) error {
+	rows, err := m.connection.Query(query)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+	defer rows.Close()
+	if rows.Next() {
+		return nil
+	}
+	return errors.New("No Response from DB")
+}
+
+func (m *MySQL) CreateDatabase(dbName string) {
+	err := m.simpleQuery("CREATE DATABASE `" + dbName + "`  DEFAULT CHARACTER SET latin1")
+	if err != nil {
+		fmt.Println(err)
+	}
+}
+
+func (m *MySQL) UserExists(userName string) bool {
+	res, err := m.Conn().Query("SELECT User from mysql.user WHERE User = ? LIMIT 1", userName)
+	if err != nil {
+		fmt.Println(err)
+		return false
+	}
+	defer res.Close()
+	for res.Next() {
+		var user string
+		res.Scan(&user)
+		return user == userName
+	}
+	return false
+}
+
+func (m *MySQL) createUser(userName, password string) error {
+	if m.UserExists(userName) {
+		return nil
+	}
+	sql := "CREATE USER '" + userName + "'@'%' IDENTIFIED BY '" + password + "'"
+	_, err := m.Conn().Exec(sql)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m *MySQL) AssignPermissions(db, userName string) error {
+	sql := fmt.Sprintf("GRANT ALL PRIVILEGES ON %s.* TO '%s'@'%' WITH GRANT OPTION;", db, userName)
+	_, err := m.Conn().Exec(sql)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m *MySQL) DatabaseExists(db string) (bool, error) {
+	sql := "show databases"
+	res, err := m.Conn().Query(sql)
+	if err != nil {
+		return false, err
+	}
+	defer res.Close()
+	for res.Next() {
+		var dbName string
+		res.Scan(&dbName)
+		if dbName == db {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (m *MySQL) ListTables(db string) ([]string, error) {
+	sql := `SELECT TABLE_NAME from information_schema WHERE TABLE_SCHEMA = '` + db + "'"
+	var tables []string
+	res, err := m.Conn().Query(sql)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+	for res.Next() {
+		var tableName string
+		res.Scan(&tableName)
+		tables = append(tables, tableName)
+	}
+	return tables, nil
+}
+
+func (m *MySQL) DeleteColumn(tableName, columnName string) error {
+	sql := fmt.Sprintf("ALTER TABLE '%s' DROP COLUMN %s", tableName, columnName)
+	_, err := m.Conn().Exec(sql)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m *MySQL) AddColumn(column *ColumnDefinition, after, tableName string) error {
+	def := `ADD COLUMN ` + ColumnDefinitionStringBasedOnType(column.ColumnName, column.ColumnType)
+	def = def[0 : len(def)-1]
+	if len(after) > 0 {
+		def += " AFTER " + after
+	}
+	sql := fmt.Sprintf("ALTER TABLE `%s` %s", tableName, def)
+	_, err := m.Conn().Exec(sql)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m *MySQL) TableExists(dbName, tableName string) (bool, error) {
+	tables, _ := m.ListTables(dbName)
+	if tables == nil {
+		return false, nil
+	}
+
+	for _, t := range tables {
+		if t == tableName {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (m *MySQL) GetCurrentStructure(dbName, tableName string) (*TableStructure, error) {
+	sql := fmt.Sprintf(`select column_name,ordinal_position,data_type,column_type from information_schema.COLUMNS where table_schema = '%s' and table_name = '%s'`, dbName, tableName)
+	res, err := m.Conn().Queryx(sql)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+	table := &TableStructure{}
+	for res.Next() {
+		var column ColumnDefinition
+		res.StructScan(&column)
+		table.Columns = append(table.Columns, &column)
+	}
+	table.Name = tableName
+	return table, nil
+}
+
+func (m *MySQL) DropTable(tableName string) error {
+	sql := `DROP TABLE ` + tableName
+	_, err := m.Conn().Exec(sql)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m *MySQL) CreateTableFromHeader(tableName, header, keyField string) error {
+	fields := strings.Split(header, ",")
+	sql := " CREATE TABLE `" + tableName + "` ("
+	for _, f := range fields {
+		nameAndType := strings.Split(f, "?")
+		sql += ColumnDefinitionStringBasedOnType(nameAndType[0], nameAndType[1])
+	}
+
+	sql += "`current_hash` BIGINT(20) DEFAULT NULL,"
+	if len(keyField) > 0 {
+		if strings.Contains(keyField, ",") {
+			sql = sql[0 : len(sql)-1]
+		} else {
+			sql += "PRIMARY KEY (`" + keyField + "`"
+		}
+	} else {
+		sql = sql[0 : len(sql)-1]
+	}
+	sql += ` ) ENGINE=InnoDB DEFAULT CHARSET=latin1;`
+
+	_, err := m.Conn().Exec(sql)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m *MySQL) ListForKey(tableName, key string, val interface{}) ([][]interface{}, error) {
+	sql := `SELECT * FROM ` + tableName + " WHERE `" + key + "` = ? LIMTI 1"
+	list, err := m.List(sql, val)
+	if err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+func (m *MySQL) MapForKey(tableName, key string, val interface{}) (*Record, error) {
+	sql := `SELECT * FROM ` + tableName + " WHERE `" + key + "` = ? LIMTI 1"
+	list, err := m.ListMap(sql, val)
+	if err != nil {
+		return nil, err
+	}
+	if len(list.Records) > 0 {
+		return list.Records[0], nil
+	}
+	return nil, errors.New("Not Found")
+}
+
+func (m *MySQL) ListMap(statement string, args ...interface{}) (*Rows, error) {
+	res, err := m.Conn().Query(statement, args)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+	columns, _ := res.Columns()
+	var records *Rows
+	for res.Next() {
+		record := make([]interface{}, len(columns))
+		for i := range record {
+			record[i] = new(interface{})
+		}
+
+		res.Scan(record...)
+
+		r := NewRecord()
+		for i := range record {
+			r.Fields[columns[i]] = *(record[i].(*interface{}))
+		}
+		records.Records = append(records.Records, r)
+		record = nil
+	}
+	return records, nil
+}
+
+func (m *MySQL) List(statement string, args ...interface{}) ([][]interface{}, error) {
+	res, err := m.Conn().Query(statement, args)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+	columns, _ := res.Columns()
+	var records [][]interface{}
+	for res.Next() {
+		record := make([]interface{}, len(columns))
+		for i := range record {
+			record[i] = new(interface{})
+		}
+
+		res.Scan(record...)
+
+		for i := range record {
+			record[i] = *(record[i].(*interface{}))
+		}
+		records = append(records, record)
+	}
+	return records, nil
+}
+
 func (m *MySQL) reset() {
 	m.db = ""
 	m.limit = 0
@@ -313,6 +569,33 @@ func New(cs string) *MySQL {
 		cs:          cs,
 		SafetyCheck: true,
 	}
+}
+
+//Column Definition coming from C#. Data types of .NET
+func ColumnDefinitionStringBasedOnType(columnName, columnType string) string {
+	sql := "`" + columnName + "` "
+	if columnType == "string" {
+		sql += "`" + columnName + "` varchar(100) DEFAULT NULL,"
+	}
+
+	if columnType == "int32" {
+		sql += "`" + columnName + "` int(11) DEFAULT NULL,"
+	}
+	if columnType == "int64" {
+		sql += "`" + columnName + "` bigint(11) DEFAULT NULL,"
+	}
+
+	if columnType == "decimal" {
+		sql += "`" + columnName + "` DECIMAL(11,5) DEFAULT NULL,"
+	}
+	if columnType == "boolean" {
+		sql += "`" + columnName + "` BIT(1) DEFAULT NULL,"
+	}
+
+	if columnType == "datetime" {
+		sql += "`" + columnName + "` DATETIME NULL DEFAULT NULL,"
+	}
+	return sql
 }
 
 func ToM(s interface{}, tagName string) M {
