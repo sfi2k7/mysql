@@ -1,6 +1,7 @@
-getpackage mysql
+package mysql
 
 import (
+	"database/sql"
 	"fmt"
 	"reflect"
 
@@ -502,13 +503,21 @@ func (m *MySQL) MapForKey(tableName, key string, val interface{}) (*Record, erro
 }
 
 func (m *MySQL) ListMap(statement string, args ...interface{}) (*Rows, error) {
-	res, err := m.Conn().Query(statement, args)
+	var res *sql.Rows
+	var err error
+	res, err = m.Conn().Query(statement, args...)
+	// if len(args) == 0 {
+	// 	res, err = m.Conn().Query(statement)
+	// } else {
+	// 	res, err = m.Conn().Query(statement, args)
+	// }
+
 	if err != nil {
 		return nil, err
 	}
 	defer res.Close()
 	columns, _ := res.Columns()
-	var records *Rows
+	records := &Rows{}
 	for res.Next() {
 		record := make([]interface{}, len(columns))
 		for i := range record {
@@ -528,7 +537,7 @@ func (m *MySQL) ListMap(statement string, args ...interface{}) (*Rows, error) {
 }
 
 func (m *MySQL) List(statement string, args ...interface{}) ([][]interface{}, error) {
-	res, err := m.Conn().Query(statement, args)
+	res, err := m.Conn().Queryx(statement, args...)
 	if err != nil {
 		return nil, err
 	}
