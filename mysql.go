@@ -215,6 +215,7 @@ func (m *MySQL) Where(where string, args M) *MySQL {
 
 func (m *MySQL) Close() {
 	if !m.isOpen {
+		fmt.Println("Connection not Open")
 		return
 	}
 	if m.connection == nil {
